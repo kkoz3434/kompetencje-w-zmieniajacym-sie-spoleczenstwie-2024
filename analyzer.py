@@ -1,4 +1,6 @@
 import pandas as pd
+import matplotlib.pyplot as plt
+import os
 
 df_bkl_2018_2022_filename = "polaczona-baza-danych-z-badania-pracodawcow-bkl-2018-2022 (1).sav"
 df_bkl_2017_2022_filename = "Połączona baza danych z badania ludności BKL 2017-2022 (SAV-SPSS).sav"
@@ -10,45 +12,9 @@ p5_columns = ["P5_1kod", "P5_2kod", "P5_3kod", "P5_4kod", "P5_5kod"]
 p3_columns = ["P3_1_1kod", "P3_2_1kod", "P3_3_1kod", "P3_4_1kod", "P3_5_1kod", "P3_6_1kod"]
 
 # brane pod uwage stanowiska
-job_titles = [
-    'Administrator baz danych',
-    'Administrator bezpieczeństwa informacji (Inspektor ochrony danych)',
-    'Administrator stron internetowych',
-    'Administrator systemów komputerowych',
-    'Analityk baz danych',
-    'Analityk sieci komputerowych',
-    'Analityk systemów teleinformatycznych',
-    'Architekt stron internetowych',
-    'Asystent usług telekomunikacyjnych',
-    'Bioinformatyk',
-    'Grafik komputerowy DTP',
-    'Inżynier teleinformatyk',
-    'Inżynier telekomunikacji',
-    'Kierownik działu informatyki',
-    'Kierownik rozwoju technologii informatycznych',
-    'Kierownik sieci informatycznych',
-    'Konserwator sieci i systemów komputerowych',
-    'Monter sieci i urządzeń telekomunikacyjnych',
-    'Nauczyciel informatyki / technologii informacyjnej',
-    'Nauczyciel informatyki w szkole podstawowej',
-    'Nauczyciel technologii informatycznych w placówkach pozaszkolnych',
-    'Operator aplikacji komputerowych',
-    'Programista aplikacji',
-    'Programista aplikacji mobilnych',
-    'Projektant / architekt systemów teleinformatycznych',
-    'Projektant baz danych',
-    'Serwisant sprzętu komputerowego',
-    'Specjalista do spraw rozwoju oprogramowania systemów informatycznych',
-    'Specjalista zastosowań informatyki',
-    'Statystyk',
-    'Technik analityk',
-    'Technik cyfrowych procesów graficznych',
-    'Technik informatyk',
-    'Technik teleinformatyk',
-    'Technik telekomunikacji',
-    'Technolog inżynierii telekomunikacyjnej',
-    'Tester oprogramowania komputerowego',
-]
+job_titles_filename = 'lista_zawodow_filtrowana.csv'
+job_titles_df = pd.read_csv(job_titles_filename)
+job_titles = dict(zip(job_titles_df['zawód'], job_titles_df['typ']))
 
 kompetencje_wartosci_2018_2020 = {
     "": 0,
@@ -94,7 +60,6 @@ kompetencje_klucz_nazwa = {
     'K23': "gotowość do częstych wyjazdów i zmiany miejsca pracy",
     'K24': "gotowość do pracy w nietypowych godzinach wymaganych przez pracodawcę",
     'K25': "biegłe posługiwanie się językiem polskim w mowiei piśmie (poprawność językowa, bogate słownictwo, łatwość wysławiania się)",
-
     'KP1': 'analiza informacji i wyciągania wniosków',
     'KP2': "uczenie się nowych rzeczy",
     'KP3': "posługiwanie się komputerem, tabletem smartfonem",
@@ -123,52 +88,149 @@ kompetencje_klucz_nazwa = {
 
 }
 
-def debug_print(dataframe, columnslist):
-    for index, row in dataframe.iterrows():
-        for column in columnslist:
-            print(str(row[column]) + " | ", end="")
-        print()
+def filter_it(df):
+    return  df.loc[df[p5_columns].isin(job_titles.keys()).any(axis=1)].copy()
 
+def separate_by_most_wanted_job_types(df):
+    # Initialize empty lists to collect rows for each type
+    rows_a = []
+    rows_p = []
+    rows_t = []
 
-def count_scores_for_given_competitions(df):
-    # 2018 2020
-    kolumny_K = [f'K{i}' for i in range(1, 26)]
-    # 2022
-    kolumny_KP = [f'KP{i}' for i in range(1, 26)]
+    # Iterate through each row and count job types
+    for idx, row in df.iterrows():
+        counts = {"a": 0, "p": 0, "t": 0}
+        for col in p5_columns:
+            job_name = row[col]
+            job_type = job_titles.get(job_name, None)
+            if job_type:
+                counts[job_type] += 1
+        
+        # Determine the max job type count
+        max_job_type = max(counts, key=counts.get)
+        
+        # Append the row to the corresponding list
+        if max_job_type == "a":
+            rows_a.append(row)
+        elif max_job_type == "t":
+            rows_t.append(row)
+        else:
+            rows_p.append(row)
 
-    # tłumaczenie string -> int
-    df[kolumny_K] = df[kolumny_K].map(kompetencje_wartosci_2018_2020.get)
-    df[kolumny_KP] = df[kolumny_KP].map(kompetencje_wartości_2022.get)
+    # Convert lists to dataframes
+    df_a = pd.DataFrame(rows_a)
+    df_p = pd.DataFrame(rows_p)
+    df_t = pd.DataFrame(rows_t)
 
-    debug_print(df, kolumny_K + kolumny_KP)
+    return df_a, df_p, df_t
 
+def divide_by_year_and_job_type(df):
+    years = [2018, 2020, 2022]
+    job_types = ['a', 'p', 't']
+    dfs = {year: {type: None for type in job_types} for year in years}
 
+    for year in years:
+        df_year = df[df['edycja'] == year]
+        df_a, df_p, df_t = separate_by_most_wanted_job_types(df_year)
+        dfs[year]['a'] = df_a
+        dfs[year]['p'] = df_p
+        dfs[year]['t'] = df_t
+    
+    return dfs
+
+def count_competencies(df):
+    combined_competency_values = {**kompetencje_wartosci_2018_2020, **kompetencje_wartości_2022}
+    competency_sums = {key: 0 for key in kompetencje_klucz_nazwa.keys() if not key.startswith('KP')}
+    
+    for competency in competency_sums.keys():
+        kp_competency = 'KP' + competency[1:]
+        if competency in df.columns:
+            competency_sums[competency] += df[competency].map(combined_competency_values).sum()
+        if kp_competency in df.columns:
+            competency_sums[competency] += df[kp_competency].map(combined_competency_values).sum()
+    
+    return competency_sums
+
+def determine_popularities(competency_sums):
+    values = list(competency_sums.values())
+    sorted_indices = sorted(range(len(values)), key=lambda i: values[i], reverse=True)
+    top_5_most = {list(competency_sums.keys())[i]: list(competency_sums.values())[i] for i in sorted_indices[:5]}
+    top_5_least = {list(competency_sums.keys())[i]: list(competency_sums.values())[i] for i in sorted_indices[-5:]}
+    return top_5_most, top_5_least
+
+def plot_competencies(competency_sums, top_5_most, top_5_least, title, filename):
+    # Extract the keys and values from the competency sums dictionary
+    competencies = list(competency_sums.keys())
+    values = list(competency_sums.values())
+    
+    # Create a color list where default color is skyblue
+    colors = ['skyblue'] * len(values)
+    
+    # Assign colors to the top 5 most and least popular competencies
+    for comp in top_5_most.keys():
+        idx = competencies.index(comp)
+        colors[idx] = 'green'
+    for comp in top_5_least.keys():
+        idx = competencies.index(comp)
+        colors[idx] = 'red'
+    
+    # Create the bar plot
+    plt.figure(figsize=(10, 6))
+    plt.bar(competencies, values, color=colors)
+    
+    # Add title and labels
+    plt.title(title)
+    plt.xlabel('Competencies')
+    plt.ylabel('Total Value')
+    
+    # Rotate x-axis labels for better readability
+    plt.xticks(rotation=90)
+    
+    # Save plot as PNG file
+    plt.tight_layout()
+    plt.savefig(filename)
+    plt.close()
 
 if __name__ == '__main__':
-    df2018 = pd.read_spss(df_bkl_2018_2022_filename)
-    print(df_bkl_2018_2022_filename + " ok")
+    df = pd.read_spss(df_bkl_2018_2022_filename)
 
-    print(df2018.columns)
-    columns = df2018.columns.tolist()
-    print("XXXXXX")
+    # Filter rows based on key positions
+    df_it = filter_it(df)
+    print("IT related rows:", df_it.shape[0])
 
-    # filtrowanie po kluczowych stanowiskach
-    filtered_kluczowe = df2018.loc[(df2018["P5_1kod"].isin(job_titles)) | (df2018["P5_2kod"].isin(job_titles))
-                                   | (df2018["P5_3kod"].isin(job_titles)) | (df2018["P5_4kod"].isin(job_titles))
-                                   | (df2018["P5_5kod"].isin(job_titles))].copy()
+    # Divide by year and job type
+    dfs = divide_by_year_and_job_type(df_it)
+    
+    # Count competencies for each df and save results
+    years = [2018, 2020, 2022]
+    job_types = ['a', 'p', 't']
+    job_type_names = {'a': 'Analysts', 'p': 'Programmers', 't': 'Technicians'}
+    
+    # Prepare results list for CSV
+    results = []
 
-    # filtrowanie po poszukiwanych stanowiskach
-    filtered_poszukiwane = df2018.loc[(df2018["P3_1_1kod"].isin(job_titles)) | (df2018["P3_2_1kod"].isin(job_titles))
-                                      | (df2018["P3_3_1kod"].isin(job_titles)) | (df2018["P3_4_1kod"].isin(job_titles))
-                                      | (df2018["P3_5_1kod"].isin(job_titles)) | (
-                                          df2018["P3_6_1kod"].isin(job_titles))].copy()
-
-    ## odfiltrowane: 194
-    print(len(filtered_kluczowe))
-
-    ## odfiltrowane: 34
-    print(len(filtered_poszukiwane))
-
-    # debug_print(filtered_poszukiwane, p3_columns)
-
-    # pokazać dane z bulldoga i porównać nasze, można wziąć gotowe wykresy
+    # Ensure results directories exist
+    os.makedirs('results/plots', exist_ok=True)
+    
+    for year in years:
+        for job_type in job_types:
+            competencies_count = count_competencies(dfs[year][job_type])
+            top_5_most, top_5_least = determine_popularities(competencies_count)
+            
+            # Save plot
+            title = f"Competencies for {job_type_names[job_type]} in {year}"
+            filename = f"results/plots/{job_type_names[job_type]}_{year}.png"
+            plot_competencies(competencies_count, top_5_most, top_5_least, title, filename)
+            
+            # Add results to the list for CSV
+            result_row = {
+                'year': year,
+                'job_type': job_type_names[job_type],
+                **{f'top_{i+1}': kompetencje_klucz_nazwa[comp] for i, comp in enumerate(top_5_most.keys())},
+                **{f'least_{i+1}': kompetencje_klucz_nazwa[comp] for i, comp in enumerate(top_5_least.keys())}
+            }
+            results.append(result_row)
+    
+    # Save results to CSV
+    results_df = pd.DataFrame(results)
+    results_df.to_csv('results/results.csv', index=False)
