@@ -2,8 +2,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 
-df_bkl_2018_2022_filename = "polaczona-baza-danych-z-badania-pracodawcow-bkl-2018-2022 (1).sav"
-df_bkl_2017_2022_filename = "Połączona baza danych z badania ludności BKL 2017-2022 (SAV-SPSS).sav"
+df_bkl_2018_2022_filename = "polaczona-baza-danych-z-badania-pracodawcow-bkl-2018-2022 (1).csv"
+df_bkl_2017_2022_filename = "Połączona baza danych z badania ludności BKL 2017-2022 (SAV-SPSS).csv"
 
 # kolumny wskazujące kluczowe stanowiska dla przedsiebiorstwa
 p5_columns = ["P5_1kod", "P5_2kod", "P5_3kod", "P5_4kod", "P5_5kod"]
@@ -148,8 +148,9 @@ def count_competencies(df):
             competency_sums[competency] += df[competency].map(combined_competency_values).sum()
         if kp_competency in df.columns:
             competency_sums[competency] += df[kp_competency].map(combined_competency_values).sum()
-    
-    return competency_sums
+    competency_scaled = {key: val/len(df) for key, val in competency_sums.items()}
+    #return competency_sums
+    return competency_scaled
 
 def determine_popularities(competency_sums):
     values = list(competency_sums.values())
@@ -192,7 +193,7 @@ def plot_competencies(competency_sums, top_5_most, top_5_least, title, filename)
     plt.close()
 
 if __name__ == '__main__':
-    df = pd.read_spss(df_bkl_2018_2022_filename)
+    df = pd.read_csv(df_bkl_2018_2022_filename)
 
     # Filter rows based on key positions
     df_it = filter_it(df)
@@ -201,7 +202,7 @@ if __name__ == '__main__':
     # Divide by year and job type
     dfs = divide_by_year_and_job_type(df_it)
     
-    # Count competencies for each df and save results
+    
     years = [2018, 2020, 2022]
     job_types = ['a', 'p', 't']
     job_type_names = {'a': 'Analysts', 'p': 'Programmers', 't': 'Technicians'}
